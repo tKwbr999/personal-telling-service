@@ -9,6 +9,13 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-}
+  webpack: (config, { isServer }) => {
+    // .env* ファイルをホットリロードの監視対象から除外
+    // config.watchOptions = {
+    //   ignored: ['**/.env*'],
+    // };
+    return config;
+  },
+};
 
-export default nextConfig
+export default nextConfig;
