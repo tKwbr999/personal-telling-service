@@ -1,0 +1,79 @@
+name: Project Build Checker
+
+on:
+  push:
+    branches: [ main, master, development ]
+  pull_request:
+    branches: [ main, master, development ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  build-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      id: install
+      run: |
+        npm ci
+      continue-on-error: true
+
+    - name: Check for dependency installation errors
+      if: steps.install.outcome == 'failure'
+      run: |
+        echo "::error::Dependency installation failed"
+        npm ci --verbose > dependency-error.log 2>&1
+        echo "## Dependency Installation Error" > error-report.md
+        echo "\`\`\`" >> error-report.md
+        cat dependency-error.log >> error-report.md
+        echo "\`\`\`" >> error-report.md
+        exit 1
+
+    - name: Analyze package.json
+      id: analyze
+      run: |
+        echo "## Package.json Analysis" > package-analysis.md
+        echo "### Project Dependencies:" >> package-analysis.md
+        jq '.dependencies' package.json >> package-analysis.md
+        echo "### Dev Dependencies:" >> package-analysis.md
+        jq '.devDependencies' package.json >> package-analysis.md
+        echo "### Scripts:" >> package-analysis.md
+        jq '.scripts' package.json >> package-analysis.md
+
+    - name: Run build
+      id: build
+      run: |
+        npm run build
+      continue-on-error: true
+
+    - name: Report build errors
+      if: steps.build.outcome == 'failure'
+      run: |
+        echo "::error::Build failed! See the error report for details."
+        npm run build --verbose > build-error.log 2>&1
+        echo "## Build Error Report" > error-report.md
+        echo "\`\`\`" >> error-report.md
+        cat build-error.log >> error-report.md
+        echo "\`\`\`" >> error-report.md
+
+    - name: Upload error report
+      if: steps.install.outcome == 'failure' || steps.build.outcome == 'failure'
+      uses: actions/upload-artifact@v3
+      with:
+        name: error-report
+        path: |
+          error-report.md
+          package-analysis.md
+
+    - name: Fail workflow if build failed
+      if: steps.build.outcome == 'failure'
+      run: exit 1
