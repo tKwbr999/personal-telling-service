@@ -1,0 +1,56 @@
+name: Check for Broken Links
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '0 0 * * 0'  # Run weekly on Sunday at midnight
+
+jobs:
+  check-links:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+
+    - name: Install link checker
+      run: npm install -g broken-link-checker
+
+    - name: Check for broken links
+      id: link-check
+      run: |
+        mkdir -p ./link-check-results
+        blc http://localhost:50513 -ro --filter-level 3 > ./link-check-results/broken-links.txt
+        if grep -q "BROKEN" ./link-check-results/broken-links.txt; then
+          echo "broken_links=true" >> $GITHUB_OUTPUT
+          echo "::error::Broken links detected! See report for details."
+        else
+          echo "broken_links=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Generate broken links report
+      if: steps.link-check.outputs.broken_links == 'true'
+      run: |
+        echo "## Broken Links Report" > ./link-check-results/report.md
+        echo "" >> ./link-check-results/report.md
+        echo "The following broken links were detected:" >> ./link-check-results/report.md
+        echo "" >> ./link-check-results/report.md
+        grep "BROKEN" ./link-check-results/broken-links.txt | awk '{print "- " $0}' >> ./link-check-results/report.md
+
+    - name: Upload report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: broken-links-report
+        path: ./link-check-results/
+
+    - name: Fail if broken links detected
+      if: steps.link-check.outputs.broken_links == 'true'
+      run: exit 1
