@@ -1,14 +1,35 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY
+const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN
+
+// 環境変数チェック
+if (!STRIPE_SECRET_KEY) {
+  throw new Error('STRIPE_SECRET_KEY is not set')
+}
+if (!DOMAIN) {
+  throw new Error('NEXT_PUBLIC_DOMAIN is not set')
+}
+
+const stripe = new Stripe(STRIPE_SECRET_KEY)
 
 export async function POST(request) {
   try {
-    const { appraisalType } = await request.json()
+    const body = await request.json()
+    const { appraisalType } = body
 
-    // Calculate price based on appraisal type (example implementation)
-    const price = appraisalType === 'standard' ? 1999 : 4999 // in cents
+    // appraisalTypeのバリデーション
+    if (!['standard', 'premium'].includes(appraisalType)) {
+      return NextResponse.json({ error: 'Invalid appraisal type' }, { status: 400 })
+    }
+
+    // 金額はサーバーで固定
+    const prices = {
+      standard: 1999,
+      premium: 4999,
+    }
+    const price = prices[appraisalType]
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -23,8 +44,8 @@ export async function POST(request) {
         quantity: 1,
       }],
       mode: 'payment',
-      success_url: `${process.env.NEXT_PUBLIC_DOMAIN}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_DOMAIN}/cancel`,
+      success_url: `${DOMAIN}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${DOMAIN}/cancel`,
     })
 
     return NextResponse.json({ sessionId: session.id })
@@ -35,4 +56,8 @@ export async function POST(request) {
       { status: 500 }
     )
   }
+}
+
+export function GET() {
+  return NextResponse.json({ error: 'Method Not Allowed' }, { status: 405 })
 }
